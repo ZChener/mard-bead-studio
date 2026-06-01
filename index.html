@@ -52,7 +52,7 @@
       .export-float { display:grid; grid-template-columns:1fr; gap:10px; }
       .meta-line { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center; }
       .stats-list { display:grid; gap:6px; margin-top:10px; max-height:260px; overflow:auto; padding-right:4px; }
-      .stat-row { display:grid; grid-template-columns:18px 48px 1fr 54px; gap:8px; align-items:center; padding:9px 8px; border:1px solid #eef2f7; border-radius:10px; font-size:12px; }
+      .stat-row { display:grid; grid-template-columns:18px 44px minmax(72px,1fr) 48px 54px; gap:8px; align-items:center; padding:9px 8px; border:1px solid #eef2f7; border-radius:10px; font-size:12px; }
       .mini-dot { display:inline-block; width:15px; height:15px; border-radius:50%; border:1px solid rgba(0,0,0,.22); }
       .hidden { display:none !important; }
       .save-modal { position:fixed; inset:0; z-index:50; background:rgba(15,23,42,.72); display:grid; place-items:center; padding:18px; }
@@ -82,7 +82,7 @@
         .control-grid { grid-template-columns:1fr; gap:14px; }
         button { width:100%; min-height:48px; }
         .row { align-items:flex-start; }
-        .stat-row { grid-template-columns:18px 44px 1fr 48px; font-size:12px; }
+        .stat-row { grid-template-columns:18px 40px minmax(72px,1fr) 42px 48px; font-size:11px; gap:6px; }
       }
     </style>
   </head>
@@ -135,7 +135,15 @@
             <div id="beadViewport" class="viewport bead-viewport">
               <div id="beadContent" class="zoom-content"><span class="hint">Bead dots will appear below the cartoon image. / 拼豆点阵会显示在卡通图下方。</span></div>
             </div>
-            <p class="hint mobile-help">在手机或微信中无法直接下载时，请点击拼豆图预览，然后长按图片保存到相册。</p>
+            <p class="hint mobile-help">手机或微信中，请点击拼豆图预览，然后长按图片保存到相册。</p>
+          </section>
+
+          <section class="side-card">
+            <div class="meta-line">
+              <strong class="hint">Bead color legend / 拼豆颜色图例</strong>
+              <span class="hint">All used colors / 全部使用颜色</span>
+            </div>
+            <div id="statsList" class="stats-list"></div>
           </section>
 
           <div class="settings-panel">
@@ -160,14 +168,6 @@
           </details>
 
           <section class="side-card">
-            <div class="meta-line">
-              <strong class="hint">Bead counts / 颗粒统计</strong>
-              <span class="hint">Top colors only / 仅显示主要颜色</span>
-            </div>
-            <div id="statsList" class="stats-list"></div>
-          </section>
-
-          <section class="side-card">
             <h3 class="section-title">Export / 导出</h3>
             <div class="export-float">
               <button id="exportPng" type="button">Download PNG / 下载 PNG</button>
@@ -184,7 +184,7 @@
           <div class="preview-head">
             <div>
               <div id="saveModalTitle" class="preview-title">Save bead pattern / 保存拼豆图</div>
-              <div class="hint">在手机或微信中无法直接下载时，请长按图片保存到相册</div>
+              <div class="hint">手机或微信中，请长按图片保存到相册。</div>
             </div>
             <button id="closeSaveModal" class="secondary" type="button">Close / 关闭</button>
           </div>

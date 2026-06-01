@@ -249,13 +249,24 @@
       reduced = true;
     }
 
-    const total = requestedW * requestedH;
-    if (total <= maxBeads) return { width: requestedW, height: requestedH, reduced };
+    const ratio = state.sourceWidth && state.sourceHeight ? state.sourceWidth / state.sourceHeight : requestedW / requestedH;
+    let width = requestedW;
+    let height = Math.max(1, Math.round(width / ratio));
+    if (height > requestedH) {
+      height = requestedH;
+      width = Math.max(1, Math.round(height * ratio));
+    }
+    width = clamp(width, 8, maxGrid);
+    height = clamp(height, 8, maxGrid);
+    if (width !== requestedW || height !== requestedH) reduced = true;
+
+    const total = width * height;
+    if (total <= maxBeads) return { width, height, reduced };
 
     const scale = Math.sqrt(maxBeads / total);
     return {
-      width: Math.max(8, Math.floor(requestedW * scale)),
-      height: Math.max(8, Math.floor(requestedH * scale)),
+      width: Math.max(8, Math.floor(width * scale)),
+      height: Math.max(8, Math.floor(height * scale)),
       reduced: true,
     };
   }
@@ -379,7 +390,7 @@
   }
 
   async function generateBeadPattern(token) {
-    await generatePattern(token);
+    return await generatePattern(token);
   }
 
   function updateBeadStats(wasReduced = false) {
@@ -560,12 +571,13 @@
     $('beadMeta').textContent = total
       ? `${cols} × ${rows} = ${total} beads / ${total}颗 · ${state.stats.length} colors / ${state.stats.length}色${wasReduced ? ' · auto-reduced / 已自动减量' : ''}`
       : 'No bead pattern yet / 尚无拼豆图';
-    $('statsList').innerHTML = state.stats.slice(0, 24).map((row) => `
+    $('statsList').innerHTML = state.stats.map((row) => `
       <div class="stat-row">
         <span class="mini-dot" style="background:${row.hex}"></span>
         <strong>${row.code}</strong>
-        <span>${row.count}</span>
+        <span>${row.hex}</span>
         <span class="hint">${row.percent.toFixed(1)}%</span>
+        <span>${row.count}</span>
       </div>
     `).join('');
   }
@@ -662,12 +674,7 @@
     ctx.closePath();
   }
 
-  function exportPng() {
-    if (!state.pattern.length) {
-      setStatus('Generate a bead pattern first. / 请先生成拼豆图。', 'error');
-      return;
-    }
-
+  function renderExportCanvasWithLegend() {
     const padding = 28;
     const cols = state.pattern[0].length;
     const rows = state.pattern.length;
@@ -675,7 +682,7 @@
     const patternW = cols * cell;
     const patternH = rows * cell;
     const legendItemW = 180;
-    const contentW = Math.max(patternW, 720);
+    const contentW = Math.max(patternW, Math.min(720, Math.max(360, patternW)));
     const legendCols = Math.max(1, Math.floor(contentW / legendItemW));
     const legendRows = Math.ceil(state.stats.length / legendCols);
     const legendTop = padding + 54 + patternH + 28;
@@ -684,7 +691,6 @@
     out.width = padding * 2 + contentW;
     out.height = legendTop + legendH + padding;
     const ctx = out.getContext('2d');
-    const mobilePreviewWindow = isMobileOrWeChat() ? window.open('', '_blank') : null;
 
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, out.width, out.height);
@@ -736,6 +742,17 @@
       ctx.fillText(`${row.code} · ${row.hex} · ${row.count}`, x + 24, y);
     });
 
+    return out;
+  }
+
+  function exportPng() {
+    if (!state.pattern.length) {
+      setStatus('Generate a bead pattern first. / 请先生成拼豆图。', 'error');
+      return;
+    }
+
+    const out = renderExportCanvasWithLegend();
+    const mobilePreviewWindow = isMobileOrWeChat() ? window.open('', '_blank') : null;
     out.toBlob((blob) => {
       releaseCanvas(out);
       downloadBlob(blob, 'mard-bead-pattern.png', mobilePreviewWindow);
@@ -768,11 +785,13 @@
   }
 
   function openBeadPreviewModal() {
-    if (!state.beadCanvas.width || !isMobileOrWeChat()) return;
+    if (!state.pattern.length) return;
     const modal = $('saveModal');
     const image = $('savePreviewImage');
     if (!modal || !image) return;
-    state.beadCanvas.toBlob((blob) => {
+    const out = renderExportCanvasWithLegend();
+    out.toBlob((blob) => {
+      releaseCanvas(out);
       if (!blob) return;
       if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
       state.previewUrl = URL.createObjectURL(blob);

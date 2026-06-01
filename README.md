@@ -21,7 +21,7 @@ index-standalone.html
 
 No installation is required. There is no backend, no npm, no Python, no API key, and no cloud service.
 
-## New UI Flow
+## UI Flow
 
 ### Initial Screen
 
@@ -36,9 +36,15 @@ After selecting or dropping an image, the app automatically:
 3. Cartoonizes the image locally.
 4. Converts it into a MARD bead pattern.
 5. Shows the bead pattern with a 10x10 grid.
-6. Reveals parameters, bead counts, and export controls.
+6. Reveals parameters, bead color legend, and export controls.
 
 There is no extra generate button.
+
+## Aspect Ratio
+
+The original preview keeps the uploaded image aspect ratio. The bead pattern also keeps the same aspect ratio as the uploaded image.
+
+The app does not crop, stretch, squeeze, or force images into a square. Canvases are scaled down only when needed for screen size or mobile stability.
 
 ## Layout
 
@@ -47,15 +53,15 @@ On mobile, the order is:
 1. Upload image
 2. Original preview
 3. Bead pattern preview
-4. Parameters
-5. Bead count statistics
+4. Bead color/count legend
+5. Parameters
 6. Export buttons
 
 On tablet and desktop, the original preview and bead workflow can sit side-by-side when there is enough width. The layout stacks automatically on narrower screens.
 
 ## Parameters
 
-The parameter controls appear directly below the generated bead pattern:
+The parameter controls appear below the generated bead pattern and legend:
 
 - Grid Width
 - Grid Height
@@ -66,7 +72,7 @@ The parameter controls appear directly below the generated bead pattern:
 - Contrast
 - Soft Edge
 
-`Max Beads` automatically reduces oversized patterns while preserving the requested aspect ratio.
+`Max Beads` automatically reduces oversized patterns while preserving the uploaded image aspect ratio.
 
 ## MARD Palette
 
@@ -80,11 +86,42 @@ Color matching uses:
 
 ## 10x10 Grid
 
-The final bead pattern includes a 10x10 grid overlay. Light lines mark every bead cell, and darker lines appear every 10 beads horizontally and vertically. The exported PNG includes the same aligned grid.
+The final bead pattern includes a 10x10 grid overlay. Light lines mark every bead cell, and darker lines appear every 10 beads horizontally and vertically. The exported PNG and modal preview include the same aligned grid.
+
+## Bead Color Legend
+
+Below the bead pattern, the app shows all used MARD colors. Each legend row includes:
+
+- color swatch
+- MARD code
+- HEX value
+- bead count
+
+Example:
+
+```text
+[A1 swatch] A1  #faf5cd  152 beads
+```
+
+## Modal Preview
+
+Click or tap the generated bead pattern to open a preview modal. The modal image is generated from the same renderer as PNG export and includes:
+
+- bead pattern
+- 10x10 grid
+- bead color/count legend below the pattern
+
+On mobile or WeChat, use the modal image for long-press saving.
+
+Instruction shown in the app:
+
+```text
+手机或微信中，请长按图片保存到相册。
+```
 
 ## Export
 
-- **Download PNG** exports the bead pattern with the 10x10 grid and a color-count legend under the image.
+- **Download PNG** exports the bead pattern with the 10x10 grid and a full color-count legend below the image.
 - **CSV** exports bead counts in this format:
 
 ```csv
@@ -92,20 +129,23 @@ Code,Hex,Count
 A1,#faf5cd,152
 ```
 
-## Mobile / WeChat Saving
+The same `renderExportCanvasWithLegend()` function is used for desktop PNG export, mobile modal preview, and click/tap preview generation.
 
-On mobile browsers or WeChat, direct file downloads may be blocked. If downloading does not start:
+## Mobile / WeChat Stability
 
-1. Tap the generated bead pattern.
-2. A preview appears.
-3. Long-press the image.
-4. Save it to the photo album.
+To reduce mobile browser crashes or WeChat reloads, the app automatically limits processing size:
 
-Instruction shown in the app:
+- Desktop longest side: up to 1000 px
+- Mobile longest side: up to 512 px
+- WeChat longest side: up to 384 px
+
+On mobile, the default grid is `40 x 40`, and grid size is capped at `80 x 80`. The app shows this warning:
 
 ```text
-在手机或微信中无法直接下载时，请长按图片保存到相册
+手机端建议使用较小图片和较低网格尺寸，避免浏览器自动刷新。
 ```
+
+Image processing is chunked with small pauses so the browser has time to update the UI instead of freezing.
 
 ## Deployment Version
 
@@ -132,19 +172,3 @@ Standalone version:
 2. No other file is required.
 
 Recommended browsers: iPhone Safari, Android Chrome, iPad browsers, WeChat browser, Chrome, Edge, Safari, or Firefox.
-
-## Mobile Stability Notes
-
-To reduce mobile browser crashes or WeChat reloads, the app automatically limits processing size:
-
-- Desktop longest side: up to 1000 px
-- Mobile longest side: up to 512 px
-- WeChat longest side: up to 384 px
-
-On mobile, the default grid is `40 x 40`, and grid size is capped at `80 x 80`. The app shows this warning:
-
-```text
-手机端建议使用较小图片和较低网格尺寸，避免浏览器自动刷新。
-```
-
-Image processing is chunked with small pauses so the browser has time to update the UI instead of freezing.

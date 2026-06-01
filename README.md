@@ -1,84 +1,78 @@
 # MARD Bead Pattern Studio
 
-A fully local, browser-only bead pattern generator. Open `index.html`, upload a photo, preview a soft cartoon version, convert it to a MARD bead-dot pattern, and export PNG or CSV.
+A fully local, browser-only bead pattern generator. Open `index.html`, upload a photo, and the app automatically creates an original preview plus a MARD bead pattern with a 10x10 grid.
 
 ## Files
 
+Development version:
+
 ```text
-MARD-Bead-Studio/
-├── index.html
-├── app.js
-├── mardPalette.json
-└── README.md
+index.html
+app.js
+mardPalette.json
+README.md
+```
+
+Deployment version:
+
+```text
+index-standalone.html
 ```
 
 No installation is required. There is no backend, no npm, no Python, no API key, and no cloud service.
 
-## Desktop Usage
+## New UI Flow
 
-1. Double-click `index.html`.
-2. Drag and drop an image into the upload card, or click **Upload Image**.
-3. Review the original preview, cartoon preview, and generated bead pattern.
-4. Adjust settings in the right column.
-5. Export PNG or CSV from the export card.
+### Initial Screen
 
-On desktop, the app keeps a two-column layout: previews on the left, settings/statistics/export on the right.
+Only the upload area is shown at first. No previews, parameters, statistics, or export controls are visible before an image is selected.
 
-## Tablet Usage
+### After Upload
 
-On tablet-width screens, the app uses a flexible layout and may stack sections vertically when space is tight. Controls remain large enough for touch, and previews stay within the screen width.
+After selecting or dropping an image, the app automatically:
 
-Recommended workflow:
+1. Loads the image.
+2. Shows the original image preview.
+3. Cartoonizes the image locally.
+4. Converts it into a MARD bead pattern.
+5. Shows the bead pattern with a 10x10 grid.
+6. Reveals parameters, bead counts, and export controls.
 
-1. Tap **Upload Image**.
-2. Choose a photo from the photo library.
-3. Pan previews with one finger.
-4. Pinch inside a preview to zoom.
-5. Adjust grid size or max beads if the pattern is too large.
+There is no extra generate button.
 
-## Mobile Usage
+## Layout
 
-On phones, sections stack in this order:
+On mobile, the order is:
 
 1. Upload image
-2. Original / Cartoon / Bead Pattern previews
-3. Settings
-4. Bead count statistics
-5. Export buttons
+2. Original preview
+3. Bead pattern preview
+4. Parameters
+5. Bead count statistics
+6. Export buttons
 
-Tap **Choose Photo / Upload Image** to select from your camera roll or photo library. Drag-and-drop remains available on desktop browsers but is not required on mobile.
+On tablet and desktop, the original preview and bead workflow can sit side-by-side when there is enough width. The layout stacks automatically on narrower screens.
 
-Advanced controls are collapsed by default on mobile. Essential controls remain visible:
+## Parameters
+
+The parameter controls appear directly below the generated bead pattern:
 
 - Grid Width
 - Grid Height
 - Max Beads
 - Max Colors
+- Cartoon Strength
+- Saturation
+- Contrast
+- Soft Edge
 
-## Preview Controls
+`Max Beads` automatically reduces oversized patterns while preserving the requested aspect ratio.
 
-- Drag with mouse or finger to pan.
-- Use mouse wheel to zoom on desktop.
-- Pinch to zoom on touch devices.
-- Tap **Reset Zoom** to return a preview to its original position.
+## MARD Palette
 
-Canvases scale visually to fit the screen while keeping their internal processing resolution.
+`mardPalette.json` contains the full MARD v1 221-color palette. It is loaded internally for nearest RGB color matching only. The full palette is not shown in the UI.
 
-## Performance
-
-Large uploaded images are resized before cartoonization. On mobile, processing is limited to about 512 px on the longest side to reduce freezing. The app yields between processing steps so loading status messages can update.
-
-## Automatic Bead Reduction
-
-Set `Grid Width` and `Grid Height` for the desired pattern size. If the total bead count is higher than `Max Beads`, the app automatically scales the grid down while preserving the requested aspect ratio.
-
-Example: a requested `160 x 160` grid has 25,600 beads. With `Max Beads = 6000`, the app reduces the grid to a smaller proportional size before mapping colors.
-
-## Color Reduction
-
-Before matching to the MARD palette, the app reduces colors locally so the pattern does not use too many bead colors. `Max Colors` limits the final set of MARD colors used in the bead image.
-
-Color matching uses nearest RGB distance:
+Color matching uses:
 
 - `hexToRgb()`
 - `rgbDistance()`
@@ -86,13 +80,11 @@ Color matching uses nearest RGB distance:
 
 ## 10x10 Grid
 
-The final bead pattern shows a 10x10 grid overlay. Light lines mark each bead cell, and stronger lines appear every 10 beads horizontally and vertically. The exported PNG includes the same aligned grid.
-
-The cartoon preview also includes a 10x10 guide grid for composition, but the final bead pattern grid is the production grid.
+The final bead pattern includes a 10x10 grid overlay. Light lines mark every bead cell, and darker lines appear every 10 beads horizontally and vertically. The exported PNG includes the same aligned grid.
 
 ## Export
 
-- **Download PNG** exports the bead-dot pattern with the 10x10 grid and a color-count legend below the image.
+- **Download PNG** exports the bead pattern with the 10x10 grid and a color-count legend under the image.
 - **CSV** exports bead counts in this format:
 
 ```csv
@@ -100,33 +92,24 @@ Code,Hex,Count
 A1,#faf5cd,152
 ```
 
-On mobile, if PNG download does not start automatically, the app opens the PNG in a new tab when possible. Long-press the opened image and choose save/share from your browser menu.
+## Mobile / WeChat Saving
 
-## MARD Palette
+On mobile browsers or WeChat, direct file downloads may be blocked. If downloading does not start:
 
-`mardPalette.json` contains the full MARD v1 221-color palette with:
+1. Tap the generated bead pattern.
+2. A preview appears.
+3. Long-press the image.
+4. Save it to the photo album.
 
-- `brand`
-- `code`
-- `hex`
-- `rgb`
-- `group`
+Instruction shown in the app:
 
-The app loads this file internally for color matching. For double-click local use, `index.html` also includes the same palette as a fallback because some browsers block `file://` JSON loading.
-
-## Run Locally
-
-1. Put the four files in the same folder.
-2. Double-click `index.html`.
-3. Use the app immediately in your browser.
-
-Recommended browsers: Chrome, Edge, Safari, or Firefox.
+```text
+在手机或微信中无法直接下载时，请长按图片保存到相册
+```
 
 ## Deployment Version
 
-The folder also includes `index-standalone.html` for sharing and deployment.
-
-Use this file when sending through WeChat, uploading to GitHub Pages, uploading to Cloudflare Pages, or opening on mobile devices where extra local files may not load reliably.
+Use `index-standalone.html` when sending through WeChat, uploading to GitHub Pages, uploading to Cloudflare Pages, or opening on mobile devices where extra files may not load reliably.
 
 `index-standalone.html` contains:
 
@@ -136,16 +119,32 @@ Use this file when sending through WeChat, uploading to GitHub Pages, uploading 
 - no `fetch()` calls
 - no external file dependencies
 
+## Run Locally
+
 Development version:
 
+1. Keep `index.html`, `app.js`, and `mardPalette.json` in the same folder.
+2. Double-click `index.html`.
+
+Standalone version:
+
+1. Open or share `index-standalone.html` directly.
+2. No other file is required.
+
+Recommended browsers: iPhone Safari, Android Chrome, iPad browsers, WeChat browser, Chrome, Edge, Safari, or Firefox.
+
+## Mobile Stability Notes
+
+To reduce mobile browser crashes or WeChat reloads, the app automatically limits processing size:
+
+- Desktop longest side: up to 1000 px
+- Mobile longest side: up to 512 px
+- WeChat longest side: up to 384 px
+
+On mobile, the default grid is `40 x 40`, and grid size is capped at `80 x 80`. The app shows this warning:
+
 ```text
-index.html
-app.js
-mardPalette.json
+手机端建议使用较小图片和较低网格尺寸，避免浏览器自动刷新。
 ```
 
-Deployment version:
-
-```text
-index-standalone.html
-```
+Image processing is chunked with small pauses so the browser has time to update the UI instead of freezing.

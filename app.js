@@ -4,6 +4,10 @@
   const state = {
     palette: [],
     originalImage: null,
+    sourceCanvas: document.createElement('canvas'),
+    sourceWidth: 0,
+    sourceHeight: 0,
+    previewUrl: '',
     originalCanvas: document.createElement('canvas'),
     cartoonCanvas: document.createElement('canvas'),
     beadCanvas: document.createElement('canvas'),
@@ -79,10 +83,32 @@
     return window.matchMedia('(max-width: 600px)').matches;
   }
 
+  function isMobileOrWeChat() {
+    return isMobileViewport() || /MicroMessenger|iPhone|iPad|Android/i.test(navigator.userAgent);
+  }
+
+  function isWeChatBrowser() {
+    return /MicroMessenger/i.test(navigator.userAgent);
+  }
+
   function processingMaxSide() {
-    if (isMobileViewport()) return 512;
+    if (isWeChatBrowser()) return 384;
+    if (isMobileOrWeChat()) return 512;
     if (window.matchMedia('(max-width: 900px)').matches) return 680;
-    return 760;
+    return 1000;
+  }
+
+  function releaseCanvas(canvas) {
+    if (!canvas) return;
+    canvas.width = 0;
+    canvas.height = 0;
+  }
+
+  function yieldToBrowser() {
+    return new Promise((resolve) => {
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve());
+      else setTimeout(resolve, 0);
+    });
   }
 
   async function loadPalette() {
@@ -120,7 +146,7 @@
     }
   }
 
-  function smoothPreserveEdges(src, width, height, strength) {
+  async function smoothPreserveEdges(src, width, height, strength, token) {
     const iterations = Math.max(1, Math.round(strength / 2));
     let current = new Uint8ClampedArray(src);
     const next = new Uint8ClampedArray(src.length);
@@ -157,6 +183,10 @@
           next[idx + 2] = b / totalWeight;
           next[idx + 3] = current[idx + 3];
         }
+        if (y % 24 === 0) {
+          await yieldToBrowser();
+          if (token !== state.processToken) return current;
+        }
       }
       current = new Uint8ClampedArray(next);
     }
@@ -177,7 +207,7 @@
     }
   }
 
-  function applySoftEdges(data, original, width, height, amount) {
+  async function applySoftEdges(data, original, width, height, amount, token) {
     const edgeAmount = amount / 100;
     if (edgeAmount <= 0) return;
     const copy = new Uint8ClampedArray(data);
@@ -196,16 +226,31 @@
         copy[idx + 1] = clamp(data[idx + 1] * (1 - edge * 0.16), 0, 255);
         copy[idx + 2] = clamp(data[idx + 2] * (1 - edge * 0.16), 0, 255);
       }
+      if (y % 32 === 0) {
+        await yieldToBrowser();
+        if (token !== state.processToken) return;
+      }
     }
     data.set(copy);
   }
 
   function autoGridSize() {
-    const requestedW = clamp(Number(controls.gridWidth.value) || 96, 8, 240);
-    const requestedH = clamp(Number(controls.gridHeight.value) || 96, 8, 240);
-    const maxBeads = clamp(Number(controls.maxBeads.value) || 6000, 100, 30000);
+    const mobile = isMobileOrWeChat();
+    const maxGrid = mobile ? 80 : 240;
+    let requestedW = clamp(Number(controls.gridWidth.value) || (mobile ? 40 : 96), 8, maxGrid);
+    let requestedH = clamp(Number(controls.gridHeight.value) || (mobile ? 40 : 96), 8, maxGrid);
+    const maxBeads = clamp(Number(controls.maxBeads.value) || (mobile ? 1600 : 6000), 100, mobile ? 6400 : 30000);
+    let reduced = false;
+
+    if (mobile && (Number(controls.gridWidth.value) > 80 || Number(controls.gridHeight.value) > 80)) {
+      controls.gridWidth.value = requestedW;
+      controls.gridHeight.value = requestedH;
+      setStatus('手机端建议使用较小图片和较低网格尺寸，避免浏览器自动刷新。已限制网格不超过 80 x 80。', 'muted');
+      reduced = true;
+    }
+
     const total = requestedW * requestedH;
-    if (total <= maxBeads) return { width: requestedW, height: requestedH, reduced: false };
+    if (total <= maxBeads) return { width: requestedW, height: requestedH, reduced };
 
     const scale = Math.sqrt(maxBeads / total);
     return {
@@ -216,12 +261,12 @@
   }
 
   async function cartoonize(token) {
-    if (!state.originalImage) return;
+    if (!state.sourceCanvas.width) return;
     const strength = Number(controls.cartoonStrength.value);
     const saturation = Number(controls.saturation.value);
     const contrast = Number(controls.contrast.value);
     const softEdge = Number(controls.softEdge.value);
-    const size = fitSize(state.originalImage.naturalWidth, state.originalImage.naturalHeight, processingMaxSide());
+    const size = { width: state.sourceWidth, height: state.sourceHeight };
     const canvas = state.cartoonCanvas;
     canvas.width = size.width;
     canvas.height = size.height;
@@ -229,34 +274,36 @@
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(state.originalImage, 0, 0, size.width, size.height);
-    await sleep(0);
+    ctx.drawImage(state.sourceCanvas, 0, 0, size.width, size.height);
+    await yieldToBrowser();
     if (token !== state.processToken) return;
 
     const imageData = ctx.getImageData(0, 0, size.width, size.height);
     const original = new Uint8ClampedArray(imageData.data);
     applySaturationContrast(imageData.data, saturation, contrast);
-    await sleep(0);
+    await yieldToBrowser();
     if (token !== state.processToken) return;
 
-    const smoothed = smoothPreserveEdges(imageData.data, size.width, size.height, strength);
+    const smoothed = await smoothPreserveEdges(imageData.data, size.width, size.height, strength, token);
+    if (token !== state.processToken) return;
     imageData.data.set(smoothed);
     quantizeColors(imageData.data, strength);
-    applySoftEdges(imageData.data, original, size.width, size.height, softEdge);
+    await applySoftEdges(imageData.data, original, size.width, size.height, softEdge, token);
+    if (token !== state.processToken) return;
     ctx.putImageData(imageData, 0, 0);
     renderCartoonPreview();
   }
 
   function renderOriginalPreview() {
-    if (!state.originalImage) return;
-    const size = fitSize(state.originalImage.naturalWidth, state.originalImage.naturalHeight, 760);
+    if (!state.sourceCanvas.width) return;
+    const size = fitSize(state.sourceWidth, state.sourceHeight, processingMaxSide());
     const canvas = state.originalCanvas;
     canvas.width = size.width;
     canvas.height = size.height;
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(state.originalImage, 0, 0, size.width, size.height);
+    ctx.drawImage(state.sourceCanvas, 0, 0, size.width, size.height);
     setCanvasInHost('originalContent', canvas, state.originalView);
   }
 
@@ -309,7 +356,7 @@
         counts.set(color.code, (counts.get(color.code) || 0) + 1);
       }
       firstPass.push(row);
-      if (y % 12 === 0) await sleep(0);
+      if (y % (isMobileOrWeChat() ? 4 : 12) === 0) await yieldToBrowser();
       if (token !== state.processToken) return;
     }
 
@@ -323,6 +370,7 @@
       const color = findClosestMardColor(bead.rgb, limitedPalette.length ? limitedPalette : state.palette);
       return { code: color.code, hex: color.hex, rgb: color.rgb, group: color.group };
     }));
+    await yieldToBrowser();
 
     recomputeStats();
     drawBeadPattern();
@@ -409,7 +457,9 @@
   }
 
   function renderCartoonPreview() {
-    setCanvasInHost('cartoonContent', state.cartoonCanvas, state.cartoonView);
+    if ($('cartoonContent')) {
+      setCanvasInHost('cartoonContent', state.cartoonCanvas, state.cartoonView);
+    }
   }
 
   function setCanvasInHost(hostId, canvas, view) {
@@ -424,6 +474,7 @@
 
   function applyTransform(hostId, view) {
     const host = $(hostId);
+    if (!host) return;
     host.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
   }
 
@@ -438,6 +489,7 @@
 
   function setupZoomPan(viewportId, hostId, view) {
     const viewport = $(viewportId);
+    if (!viewport) return;
     const pointers = new Map();
     let pinchStartDistance = 0;
     let pinchStartScale = 1;
@@ -519,18 +571,19 @@
   }
 
   async function processAll() {
-    if (!state.originalImage) return;
+    if (!state.sourceCanvas.width) return;
     const token = ++state.processToken;
-    setStatus('Processing locally... / 正在本地处理...', 'muted');
-    await sleep(20);
+    setStatus('正在生成，请稍候… / Generating, please wait...', 'muted');
+    await yieldToBrowser();
     renderOriginalPreview();
-    setStatus('Cartoonizing image... / 正在卡通化图片...', 'muted');
+    setStatus('正在生成，请稍候… 正在卡通化图片...', 'muted');
     await generateCartoonImage(token);
     if (token !== state.processToken) return;
-    setStatus('Generating bead pattern... / 正在生成拼豆图...', 'muted');
+    setStatus('正在生成，请稍候… 正在生成拼豆图...', 'muted');
     const wasReduced = await generateBeadPattern(token);
     if (token !== state.processToken) return;
     updateBeadStats(Boolean(wasReduced));
+    $('workspace')?.classList.remove('hidden');
     setStatus('Ready. All processing stayed inside this browser. / 已完成，全部在浏览器本地处理。', 'success');
   }
 
@@ -544,13 +597,41 @@
     const img = new Image();
     img.onload = async () => {
       URL.revokeObjectURL(url);
+      releaseCanvas(state.sourceCanvas);
+      releaseCanvas(state.originalCanvas);
+      releaseCanvas(state.cartoonCanvas);
+      releaseCanvas(state.beadCanvas);
+      state.pattern = [];
+      state.stats = [];
       state.originalImage = img;
-      state.imageMeta = `${file.name} · ${img.naturalWidth} × ${img.naturalHeight}px · ${(file.size / 1024 / 1024).toFixed(2)} MB`;
+      const sourceSize = fitSize(img.naturalWidth, img.naturalHeight, processingMaxSide());
+      state.sourceCanvas.width = sourceSize.width;
+      state.sourceCanvas.height = sourceSize.height;
+      state.sourceWidth = sourceSize.width;
+      state.sourceHeight = sourceSize.height;
+      const sourceCtx = state.sourceCanvas.getContext('2d');
+      sourceCtx.imageSmoothingEnabled = true;
+      sourceCtx.imageSmoothingQuality = 'high';
+      sourceCtx.drawImage(img, 0, 0, sourceSize.width, sourceSize.height);
+      state.originalImage = null;
+      img.onload = null;
+      img.onerror = null;
+      img.src = '';
+      state.imageMeta = `${file.name} · original ${sourceSize.width} × ${sourceSize.height}px processing / 本地处理尺寸 ${sourceSize.width} × ${sourceSize.height}px · ${(file.size / 1024 / 1024).toFixed(2)} MB`;
       $('imageInfo').textContent = state.imageMeta;
+      $('workspace')?.classList.remove('hidden');
+      $('statsList').innerHTML = '';
+      $('beadMeta').textContent = 'Generating bead pattern... / 正在生成拼豆图...';
       resetZoom('original');
       resetZoom('cartoon');
       resetZoom('bead');
       renderOriginalPreview();
+      if (isMobileOrWeChat()) {
+        controls.gridWidth.value = Math.min(Number(controls.gridWidth.value) || 40, 80);
+        controls.gridHeight.value = Math.min(Number(controls.gridHeight.value) || 40, 80);
+        controls.maxBeads.value = Math.min(Number(controls.maxBeads.value) || 1600, 6400);
+        setStatus('手机端建议使用较小图片和较低网格尺寸，避免浏览器自动刷新。正在生成，请稍候…', 'muted');
+      }
       await processAll();
     };
     img.onerror = () => setStatus('Could not load this image. / 无法读取这张图片。', 'error');
@@ -603,7 +684,7 @@
     out.width = padding * 2 + contentW;
     out.height = legendTop + legendH + padding;
     const ctx = out.getContext('2d');
-    const mobilePreviewWindow = isMobileViewport() ? window.open('', '_blank') : null;
+    const mobilePreviewWindow = isMobileOrWeChat() ? window.open('', '_blank') : null;
 
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, out.width, out.height);
@@ -655,7 +736,10 @@
       ctx.fillText(`${row.code} · ${row.hex} · ${row.count}`, x + 24, y);
     });
 
-    out.toBlob((blob) => downloadBlob(blob, 'mard-bead-pattern.png', mobilePreviewWindow), 'image/png');
+    out.toBlob((blob) => {
+      releaseCanvas(out);
+      downloadBlob(blob, 'mard-bead-pattern.png', mobilePreviewWindow);
+    }, 'image/png');
   }
 
   function downloadBlob(blob, filename, previewWindow = null) {
@@ -667,7 +751,7 @@
     a.click();
     a.remove();
 
-    if (isMobileViewport() && blob.type.startsWith('image/')) {
+    if (isMobileOrWeChat() && blob.type.startsWith('image/')) {
       if (previewWindow) {
         previewWindow.location.href = url;
       }
@@ -681,6 +765,30 @@
     }
 
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function openBeadPreviewModal() {
+    if (!state.beadCanvas.width || !isMobileOrWeChat()) return;
+    const modal = $('saveModal');
+    const image = $('savePreviewImage');
+    if (!modal || !image) return;
+    state.beadCanvas.toBlob((blob) => {
+      if (!blob) return;
+      if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
+      state.previewUrl = URL.createObjectURL(blob);
+      image.src = state.previewUrl;
+      modal.classList.remove('hidden');
+    }, 'image/png');
+  }
+
+  function closeBeadPreviewModal() {
+    $('saveModal')?.classList.add('hidden');
+    const image = $('savePreviewImage');
+    if (image) image.removeAttribute('src');
+    if (state.previewUrl) {
+      URL.revokeObjectURL(state.previewUrl);
+      state.previewUrl = '';
+    }
   }
 
   function debounce(fn, delay = 320) {
@@ -708,13 +816,16 @@
     dropzone.addEventListener('drop', (event) => handleImageUpload(event.dataTransfer.files[0]));
 
     setupZoomPan('originalViewport', 'originalContent', state.originalView);
-    setupZoomPan('cartoonViewport', 'cartoonContent', state.cartoonView);
     setupZoomPan('beadViewport', 'beadContent', state.beadView);
     $('resetOriginal').addEventListener('click', () => resetZoom('original'));
-    $('resetCartoon').addEventListener('click', () => resetZoom('cartoon'));
     $('resetBeads').addEventListener('click', () => resetZoom('bead'));
+    state.beadCanvas.addEventListener('click', openBeadPreviewModal);
+    $('closeSaveModal')?.addEventListener('click', closeBeadPreviewModal);
+    $('saveModal')?.addEventListener('click', (event) => {
+      if (event.target.id === 'saveModal') closeBeadPreviewModal();
+    });
 
-    const debounced = debounce(processAll);
+    const debounced = debounce(processAll, 480);
     Object.values(controls).forEach((control) => {
       control.addEventListener('input', debounced);
       control.addEventListener('change', debounced);
@@ -728,6 +839,12 @@
     bindEvents();
     if (isMobileViewport()) {
       $('advancedSettings')?.removeAttribute('open');
+      controls.gridWidth.value = 40;
+      controls.gridHeight.value = 40;
+      controls.maxBeads.value = 1600;
+      controls.gridWidth.max = 80;
+      controls.gridHeight.max = 80;
+      controls.maxBeads.max = 6400;
     }
     await loadPalette();
     setStatus('Upload an image to begin. / 上传图片开始。');

@@ -18,6 +18,7 @@
     cartoonView: { scale: 1, x: 0, y: 0, dragging: false, px: 0, py: 0 },
     beadView: { scale: 1, x: 0, y: 0, dragging: false, px: 0, py: 0 },
     processToken: 0,
+    regenTimer: null,
   };
 
   const controls = {
@@ -443,8 +444,8 @@
     setCanvasInHost('beadContent', canvas, state.beadView);
   }
 
-  function drawBeadGrid(ctx, cols, rows, beadSize, offsetX = 0, offsetY = 0) {
-    if (!controls.showGrid.checked) return;
+  function drawBeadGrid(ctx, cols, rows, beadSize, offsetX = 0, offsetY = 0, force = false) {
+    if (!force && !controls.showGrid.checked) return;
 
     ctx.save();
     ctx.lineCap = 'butt';
@@ -588,10 +589,10 @@
     `).join('');
   }
 
-  async function processAll() {
+  async function processAll(statusLabel = '正在生成，请稍候… / Generating, please wait...') {
     if (!state.sourceCanvas.width) return;
     const token = ++state.processToken;
-    setStatus('正在生成，请稍候… / Generating, please wait...', 'muted');
+    setStatus(statusLabel, 'muted');
     await yieldToBrowser();
     renderOriginalPreview();
     setStatus('正在生成，请稍候… 正在卡通化图片...', 'muted');
@@ -679,11 +680,15 @@
     ctx.closePath();
   }
 
-  function renderExportCanvasWithLegend() {
+  function renderExportCanvasWithLegend(options = {}) {
+    const includeLegend = options.includeLegend !== false;
+    const includeGrid = options.includeGrid !== false;
+    const highRes = options.highRes !== false;
     const padding = 28;
     const cols = state.pattern[0].length;
     const rows = state.pattern.length;
-    const cell = Math.max(6, Math.min(18, Math.floor(1150 / Math.max(cols, rows))));
+    const maxPatternSide = highRes ? 1600 : 1150;
+    const cell = Math.max(6, Math.min(highRes ? 24 : 18, Math.floor(maxPatternSide / Math.max(cols, rows))));
     const patternW = cols * cell;
     const patternH = rows * cell;
     const legendItemW = 180;
@@ -691,10 +696,10 @@
     const legendCols = Math.max(1, Math.floor(contentW / legendItemW));
     const legendRows = Math.ceil(state.stats.length / legendCols);
     const legendTop = padding + 54 + patternH + 28;
-    const legendH = 62 + legendRows * 26;
+    const legendH = includeLegend ? 62 + legendRows * 26 : 0;
     const out = document.createElement('canvas');
     out.width = padding * 2 + contentW;
-    out.height = legendTop + legendH + padding;
+    out.height = includeLegend ? legendTop + legendH + padding : padding + 54 + patternH + padding;
     const ctx = out.getContext('2d');
 
     ctx.fillStyle = '#ffffff';
@@ -717,7 +722,9 @@
         ctx.fill();
       }
     }
-    drawBeadGrid(ctx, cols, rows, cell, patternX, py);
+    if (includeGrid) drawBeadGrid(ctx, cols, rows, cell, patternX, py, true);
+
+    if (!includeLegend) return out;
 
     ctx.fillStyle = '#f8fafc';
     ctx.strokeStyle = '#e2e8f0';
@@ -756,7 +763,7 @@
       return;
     }
 
-    const out = renderExportCanvasWithLegend();
+    const out = renderExportCanvasWithLegend({ highRes: true, includeLegend: true, includeGrid: true });
     const mobilePreviewWindow = isMobileOrWeChat() ? window.open('', '_blank') : null;
     out.toBlob((blob) => {
       releaseCanvas(out);
@@ -789,12 +796,12 @@
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  function openBeadPreviewModal() {
+  function openMobileSaveModal() {
     if (!state.pattern.length) return;
     const modal = $('saveModal');
     const image = $('savePreviewImage');
     if (!modal || !image) return;
-    const out = renderExportCanvasWithLegend();
+    const out = renderExportCanvasWithLegend({ highRes: true, includeLegend: true, includeGrid: true });
     out.toBlob((blob) => {
       releaseCanvas(out);
       if (!blob) return;
@@ -802,11 +809,14 @@
       state.previewUrl = URL.createObjectURL(blob);
       image.src = state.previewUrl;
       modal.classList.remove('hidden');
+      modal.style.display = 'flex';
     }, 'image/png');
   }
 
   function closeBeadPreviewModal() {
-    $('saveModal')?.classList.add('hidden');
+    const modal = $('saveModal');
+    modal?.classList.add('hidden');
+    if (modal) modal.style.display = '';
     const image = $('savePreviewImage');
     if (image) image.removeAttribute('src');
     if (state.previewUrl) {
@@ -821,6 +831,15 @@
       window.clearTimeout(timer);
       timer = window.setTimeout(() => fn(...args), delay);
     };
+  }
+
+  function debouncedRegeneratePattern() {
+    window.clearTimeout(state.regenTimer);
+    state.regenTimer = window.setTimeout(async () => {
+      if (!state.sourceCanvas.width) return;
+      setStatus('正在重新生成... / Regenerating...', 'muted');
+      await processAll('正在重新生成... / Regenerating...');
+    }, 480);
   }
 
   function bindEvents() {
@@ -843,16 +862,27 @@
     setupZoomPan('beadViewport', 'beadContent', state.beadView);
     $('resetOriginal').addEventListener('click', () => resetZoom('original'));
     $('resetBeads').addEventListener('click', () => resetZoom('bead'));
-    state.beadCanvas.addEventListener('click', openBeadPreviewModal);
+    state.beadCanvas.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openMobileSaveModal();
+    });
     $('closeSaveModal')?.addEventListener('click', closeBeadPreviewModal);
     $('saveModal')?.addEventListener('click', (event) => {
       if (event.target.id === 'saveModal') closeBeadPreviewModal();
     });
 
-    const debounced = debounce(processAll, 480);
-    Object.values(controls).forEach((control) => {
-      control.addEventListener('input', debounced);
-      control.addEventListener('change', debounced);
+    [
+      controls.gridWidth,
+      controls.maxBeads,
+      controls.maxColors,
+      controls.cartoonStrength,
+      controls.saturation,
+      controls.contrast,
+      controls.softEdge,
+      controls.showGrid,
+    ].forEach((control) => {
+      control.addEventListener('input', debouncedRegeneratePattern);
+      control.addEventListener('change', debouncedRegeneratePattern);
     });
 
     $('exportPng').addEventListener('click', exportPng);

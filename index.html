@@ -55,10 +55,10 @@
       .stat-row { display:grid; grid-template-columns:18px 44px minmax(82px,1fr) 70px; gap:8px; align-items:center; padding:9px 8px; border:1px solid #eef2f7; border-radius:10px; font-size:12px; }
       .mini-dot { display:inline-block; width:15px; height:15px; border-radius:50%; border:1px solid rgba(0,0,0,.22); }
       .hidden { display:none !important; }
-      .save-modal { position:fixed; inset:0; z-index:50; background:rgba(15,23,42,.72); display:grid; place-items:center; padding:18px; }
+      .save-modal { position:fixed; inset:0; z-index:50; background:rgba(15,23,42,.72); display:flex; justify-content:center; align-items:flex-start; overflow:auto; padding:18px; }
       .save-modal.hidden { display:none !important; }
       .save-modal-card { width:min(760px,100%); max-height:92vh; overflow:auto; background:#fff; border-radius:18px; padding:16px; box-shadow:0 24px 80px rgba(0,0,0,.35); }
-      .save-modal-card img { width:100%; height:auto; display:block; border:1px solid var(--bd); border-radius:12px; margin:12px 0; }
+      .save-modal-card img { max-width:100%; height:auto; display:block; border:1px solid var(--bd); border-radius:12px; margin:12px 0; }
       .mobile-help { margin-top:10px; }
       .advanced-settings { margin-top:14px; border-top:1px solid var(--bd); padding-top:12px; }
       .advanced-settings summary { cursor:pointer; color:var(--tx); font-weight:650; }

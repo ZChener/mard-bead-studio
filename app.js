@@ -8,6 +8,7 @@
     sourceWidth: 0,
     sourceHeight: 0,
     previewUrl: '',
+    previewDataUrl: '',
     originalCanvas: document.createElement('canvas'),
     cartoonCanvas: document.createElement('canvas'),
     beadCanvas: document.createElement('canvas'),
@@ -31,6 +32,17 @@
     contrast: $('contrast'),
     softEdge: $('softEdge'),
     showGrid: $('showGrid'),
+  };
+
+  const controlValueIds = {
+    gridWidth: 'gridWidthValue',
+    gridHeight: 'gridHeightValue',
+    maxBeads: 'maxBeadsValue',
+    maxColors: 'maxColorsValue',
+    cartoonStrength: 'cartoonStrengthValue',
+    saturation: 'saturationValue',
+    contrast: 'contrastValue',
+    softEdge: 'softEdgeValue',
   };
 
   const sleep = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -97,6 +109,29 @@
     if (isMobileOrWeChat()) return 512;
     if (window.matchMedia('(max-width: 900px)').matches) return 680;
     return 1000;
+  }
+
+  function setControlValue(id, value) {
+    const el = $(id);
+    if (el) el.textContent = String(value);
+  }
+
+  function estimateGridHeight(width = Number(controls.gridWidth.value) || 120) {
+    const ratio = state.sourceWidth && state.sourceHeight ? state.sourceWidth / state.sourceHeight : 1.5;
+    return Math.max(8, Math.round(width / ratio));
+  }
+
+  function updateControlLabels() {
+    const width = Number(controls.gridWidth.value) || 120;
+    const height = Number(controls.gridHeight.value) || estimateGridHeight(width);
+    setControlValue(controlValueIds.gridWidth, width);
+    setControlValue(controlValueIds.gridHeight, height);
+    setControlValue(controlValueIds.maxBeads, controls.maxBeads.value);
+    setControlValue(controlValueIds.maxColors, controls.maxColors.value);
+    setControlValue(controlValueIds.cartoonStrength, controls.cartoonStrength.value);
+    setControlValue(controlValueIds.saturation, controls.saturation.value);
+    setControlValue(controlValueIds.contrast, controls.contrast.value);
+    setControlValue(controlValueIds.softEdge, controls.softEdge.value);
   }
 
   function releaseCanvas(canvas) {
@@ -238,8 +273,8 @@
   function autoGridSize() {
     const mobile = isMobileOrWeChat();
     const maxGrid = mobile ? 120 : 200;
-    let requestedW = clamp(Number(controls.gridWidth.value) || (mobile ? 80 : 120), 8, maxGrid);
-    const maxBeads = clamp(Number(controls.maxBeads.value) || (mobile ? 5000 : 12000), 100, mobile ? 14400 : 40000);
+    let requestedW = clamp(Number(controls.gridWidth.value) || (mobile ? 80 : 120), 40, maxGrid);
+    const maxBeads = clamp(Number(controls.maxBeads.value) || 5000, 1000, 20000);
     let reduced = false;
 
     if (mobile && Number(controls.gridWidth.value) > maxGrid) {
@@ -248,14 +283,14 @@
       reduced = true;
     }
 
-    const ratio = state.sourceWidth && state.sourceHeight ? state.sourceWidth / state.sourceHeight : 1;
+    const ratio = state.sourceWidth && state.sourceHeight ? state.sourceWidth / state.sourceHeight : 1.5;
     let width = requestedW;
     let height = Math.max(1, Math.round(width / ratio));
     if (height > maxGrid) {
       height = maxGrid;
       width = Math.max(1, Math.round(height * ratio));
     }
-    width = clamp(width, 8, maxGrid);
+    width = clamp(width, 40, maxGrid);
     height = clamp(height, 8, maxGrid);
     if (width !== requestedW) reduced = true;
 
@@ -263,6 +298,7 @@
     if (total <= maxBeads) {
       controls.gridWidth.value = width;
       controls.gridHeight.value = height;
+      updateControlLabels();
       return { width, height, reduced };
     }
 
@@ -273,12 +309,13 @@
       reduced: true,
     };
     controls.gridHeight.value = adjusted.height;
+    updateControlLabels();
     return adjusted;
   }
 
   async function cartoonize(token) {
     if (!state.sourceCanvas.width) return;
-    const strength = Number(controls.cartoonStrength.value);
+    const strength = 1 + (Number(controls.cartoonStrength.value) / 100) * 9;
     const saturation = Number(controls.saturation.value);
     const contrast = Number(controls.contrast.value);
     const softEdge = Number(controls.softEdge.value);
@@ -354,7 +391,7 @@
   async function generatePattern(token) {
     if (!state.cartoonCanvas.width || !state.palette.length) return;
     const grid = autoGridSize();
-    const maxColors = clamp(Number(controls.maxColors.value) || 80, 2, 221);
+    const maxColors = clamp(Number(controls.maxColors.value) || 32, 8, 80);
     const ctx = state.cartoonCanvas.getContext('2d', { willReadFrequently: true });
     const source = ctx.getImageData(0, 0, state.cartoonCanvas.width, state.cartoonCanvas.height);
     const cellW = state.cartoonCanvas.width / grid.width;
@@ -646,8 +683,10 @@
       resetZoom('bead');
       renderOriginalPreview();
       if (isMobileOrWeChat()) {
-      controls.gridWidth.value = Math.min(Number(controls.gridWidth.value) || 80, 120);
-      controls.maxBeads.value = Math.min(Number(controls.maxBeads.value) || 5000, 14400);
+        controls.gridWidth.value = Math.min(Number(controls.gridWidth.value) || 80, 120);
+        controls.maxBeads.value = Math.min(Number(controls.maxBeads.value) || 5000, 20000);
+        controls.gridHeight.value = estimateGridHeight(Number(controls.gridWidth.value));
+        updateControlLabels();
         setStatus('手机端建议使用较小图片和较低网格尺寸，避免浏览器自动刷新。正在生成，请稍候…', 'muted');
       }
       await processAll();
@@ -681,22 +720,28 @@
   }
 
   function renderExportCanvasWithLegend(options = {}) {
+    const compact = options.compact === true;
     const includeLegend = options.includeLegend !== false;
     const includeGrid = options.includeGrid !== false;
     const highRes = options.highRes !== false;
-    const padding = 28;
+    const padding = compact ? 20 : 28;
     const cols = state.pattern[0].length;
     const rows = state.pattern.length;
-    const maxPatternSide = highRes ? 1600 : 1150;
-    const cell = Math.max(6, Math.min(highRes ? 24 : 18, Math.floor(maxPatternSide / Math.max(cols, rows))));
+    const maxPatternSide = compact ? 900 : highRes ? 1600 : 1150;
+    const cell = Math.max(4, Math.min(compact ? 14 : highRes ? 24 : 18, Math.floor(maxPatternSide / Math.max(cols, rows))));
     const patternW = cols * cell;
     const patternH = rows * cell;
-    const legendItemW = 180;
-    const contentW = Math.max(patternW, Math.min(720, Math.max(360, patternW)));
-    const legendCols = Math.max(1, Math.floor(contentW / legendItemW));
+    const legendItemW = compact ? 150 : 180;
+    const contentW = compact
+      ? Math.max(patternW, Math.min(960, Math.max(640, patternW)))
+      : Math.max(patternW, Math.min(720, Math.max(360, patternW)));
+    const legendCols = compact
+      ? clamp(Math.floor(contentW / legendItemW), 2, 4)
+      : Math.max(1, Math.floor(contentW / legendItemW));
     const legendRows = Math.ceil(state.stats.length / legendCols);
-    const legendTop = padding + 54 + patternH + 28;
-    const legendH = includeLegend ? 62 + legendRows * 26 : 0;
+    const legendTop = padding + (compact ? 44 : 54) + patternH + (compact ? 18 : 28);
+    const legendRowH = compact ? 18 : 26;
+    const legendH = includeLegend ? (compact ? 48 : 62) + legendRows * legendRowH : 0;
     const out = document.createElement('canvas');
     out.width = padding * 2 + contentW;
     out.height = includeLegend ? legendTop + legendH + padding : padding + 54 + patternH + padding;
@@ -705,13 +750,13 @@
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, out.width, out.height);
     ctx.fillStyle = '#0f172a';
-    ctx.font = '700 22px system-ui, sans-serif';
+    ctx.font = compact ? '700 18px system-ui, sans-serif' : '700 22px system-ui, sans-serif';
     ctx.fillText('MARD Bead Pattern Studio', padding, padding + 4);
-    ctx.font = '13px system-ui, sans-serif';
+    ctx.font = compact ? '11px system-ui, sans-serif' : '13px system-ui, sans-serif';
     ctx.fillStyle = '#64748b';
-    ctx.fillText(`${cols} × ${rows} · ${cols * rows} beads`, padding, padding + 28);
+    ctx.fillText(`${cols} × ${rows} · ${cols * rows} beads`, padding, padding + (compact ? 24 : 28));
 
-    const py = padding + 54;
+    const py = padding + (compact ? 44 : 54);
     const patternX = padding + Math.floor((contentW - patternW) / 2);
     for (let y = 0; y < rows; y += 1) {
       for (let x = 0; x < cols; x += 1) {
@@ -729,29 +774,29 @@
     ctx.fillStyle = '#f8fafc';
     ctx.strokeStyle = '#e2e8f0';
     ctx.lineWidth = 1;
-    roundedRectPath(ctx, padding, legendTop, contentW, legendH, 14);
+    roundedRectPath(ctx, padding, legendTop, contentW, legendH, compact ? 10 : 14);
     ctx.fill();
     ctx.stroke();
 
     ctx.fillStyle = '#0f172a';
-    ctx.font = '700 16px system-ui, sans-serif';
-    ctx.fillText('Color Legend / 颜色图例', padding + 18, legendTop + 28);
-    ctx.font = '12px system-ui, sans-serif';
+    ctx.font = compact ? '700 13px system-ui, sans-serif' : '700 16px system-ui, sans-serif';
+    ctx.fillText('Color Legend / 颜色图例', padding + (compact ? 12 : 18), legendTop + (compact ? 22 : 28));
+    ctx.font = compact ? '10px system-ui, sans-serif' : '12px system-ui, sans-serif';
     ctx.fillStyle = '#64748b';
-    ctx.fillText('Code · HEX · bead count / 色号 · HEX · 颗粒数量', padding + 18, legendTop + 46);
+    ctx.fillText('Code · HEX · count / 色号 · 数量', padding + (compact ? 12 : 18), legendTop + (compact ? 38 : 46));
 
-    ctx.font = '12px system-ui, sans-serif';
+    ctx.font = compact ? '10px system-ui, sans-serif' : '12px system-ui, sans-serif';
     state.stats.forEach((row, i) => {
       const col = i % legendCols;
       const line = Math.floor(i / legendCols);
-      const x = padding + 18 + col * legendItemW;
-      const y = legendTop + 74 + line * 26;
+      const x = padding + (compact ? 12 : 18) + col * legendItemW;
+      const y = legendTop + (compact ? 58 : 74) + line * legendRowH;
       ctx.fillStyle = row.hex;
-      ctx.fillRect(x, y - 13, 16, 16);
+      ctx.fillRect(x, y - (compact ? 10 : 13), compact ? 12 : 16, compact ? 12 : 16);
       ctx.strokeStyle = '#cbd5e1';
-      ctx.strokeRect(x, y - 13, 16, 16);
+      ctx.strokeRect(x, y - (compact ? 10 : 13), compact ? 12 : 16, compact ? 12 : 16);
       ctx.fillStyle = '#0f172a';
-      ctx.fillText(`${row.code} · ${row.hex} · ${row.count}`, x + 24, y);
+      ctx.fillText(`${row.code} ${row.hex} ${row.count}`, x + (compact ? 18 : 24), y);
     });
 
     return out;
@@ -801,15 +846,20 @@
     const modal = $('saveModal');
     const image = $('savePreviewImage');
     if (!modal || !image) return;
-    const out = renderExportCanvasWithLegend({ highRes: true, includeLegend: true, includeGrid: true });
+    const out = renderExportCanvasWithLegend({ compact: true, highRes: true, includeLegend: true, includeGrid: true });
     out.toBlob((blob) => {
       releaseCanvas(out);
       if (!blob) return;
       if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
-      state.previewUrl = URL.createObjectURL(blob);
-      image.src = state.previewUrl;
-      modal.classList.remove('hidden');
-      modal.style.display = 'flex';
+      state.previewUrl = '';
+      const reader = new FileReader();
+      reader.onload = () => {
+        state.previewDataUrl = reader.result;
+        image.src = state.previewDataUrl;
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+      };
+      reader.readAsDataURL(blob);
     }, 'image/png');
   }
 
@@ -823,6 +873,7 @@
       URL.revokeObjectURL(state.previewUrl);
       state.previewUrl = '';
     }
+    state.previewDataUrl = '';
   }
 
   function debounce(fn, delay = 320) {
@@ -839,7 +890,13 @@
       if (!state.sourceCanvas.width) return;
       setStatus('正在重新生成... / Regenerating...', 'muted');
       await processAll('正在重新生成... / Regenerating...');
-    }, 480);
+    }, 400);
+  }
+
+  function handleParameterInput() {
+    controls.gridHeight.value = estimateGridHeight(Number(controls.gridWidth.value));
+    updateControlLabels();
+    debouncedRegeneratePattern();
   }
 
   function bindEvents() {
@@ -867,6 +924,9 @@
       openMobileSaveModal();
     });
     $('closeSaveModal')?.addEventListener('click', closeBeadPreviewModal);
+    $('openFullImage')?.addEventListener('click', () => {
+      if (state.previewDataUrl || state.previewUrl) window.open(state.previewDataUrl || state.previewUrl, '_blank');
+    });
     $('saveModal')?.addEventListener('click', (event) => {
       if (event.target.id === 'saveModal') closeBeadPreviewModal();
     });
@@ -881,8 +941,8 @@
       controls.softEdge,
       controls.showGrid,
     ].forEach((control) => {
-      control.addEventListener('input', debouncedRegeneratePattern);
-      control.addEventListener('change', debouncedRegeneratePattern);
+      control.addEventListener('input', handleParameterInput);
+      control.addEventListener('change', handleParameterInput);
     });
 
     $('exportPng').addEventListener('click', exportPng);
@@ -894,18 +954,30 @@
     if (isMobileOrWeChat()) {
       $('advancedSettings')?.removeAttribute('open');
       controls.gridWidth.value = 80;
-      controls.gridHeight.value = 80;
+      controls.gridHeight.value = 53;
       controls.maxBeads.value = 5000;
       controls.gridWidth.max = 120;
       controls.gridHeight.max = 120;
-      controls.maxBeads.max = 14400;
+      controls.maxBeads.max = 20000;
+      controls.maxColors.value = 32;
+      controls.cartoonStrength.value = 40;
+      controls.saturation.value = 115;
+      controls.contrast.value = 110;
+      controls.softEdge.value = 30;
     } else {
       controls.gridWidth.value = 120;
       controls.gridHeight.value = 80;
-      controls.maxBeads.value = 12000;
+      controls.maxBeads.value = 5000;
       controls.gridWidth.max = 200;
       controls.gridHeight.max = 200;
+      controls.maxBeads.max = 20000;
+      controls.maxColors.value = 32;
+      controls.cartoonStrength.value = 40;
+      controls.saturation.value = 115;
+      controls.contrast.value = 110;
+      controls.softEdge.value = 30;
     }
+    updateControlLabels();
     await loadPalette();
     setStatus('Upload an image to begin. / 上传图片开始。');
   });

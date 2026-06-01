@@ -17,6 +17,8 @@
       .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
       .main-grid { display:grid; grid-template-columns:minmax(0, .95fr) minmax(0, 1.05fr); gap:24px; align-items:start; }
       label { color: var(--mut); font-size: 13px; display:grid; gap:7px; }
+      .slider-label { display:flex; justify-content:space-between; gap:10px; align-items:center; color:var(--mut); font-size:13px; }
+      .slider-value { color:var(--tx); font-weight:700; font-variant-numeric:tabular-nums; }
       input { width:100%; min-height:44px; padding:10px 12px; border:1px solid var(--bd); border-radius:10px; background:#fff; color:var(--tx); font-size:16px; }
       input[type="range"] { min-height:44px; padding:0; accent-color:var(--c1); }
       input[type="checkbox"] { width:22px; min-height:22px; }
@@ -150,18 +152,18 @@
           <details class="settings-card" open>
             <summary>Parameters / 参数 <span class="hint">collapse / 可折叠</span></summary>
             <div class="control-grid">
-              <label>Grid Width / 网格宽 <input id="gridWidth" type="number" min="8" max="200" value="120" /></label>
-              <label>Auto Height / 自动高度 <input id="gridHeight" type="number" min="8" max="200" value="80" readonly /></label>
-              <label>Max Beads / 最大颗粒 <input id="maxBeads" type="number" min="100" max="40000" value="12000" /></label>
-              <label>Max Colors / 最大颜色 <input id="maxColors" type="number" min="2" max="221" value="80" /></label>
+              <label><span class="slider-label"><span>分辨率 / 宽度豆数</span><span><span id="gridWidthValue" class="slider-value">120</span> beads</span></span><input id="gridWidth" type="range" min="40" max="200" step="10" value="120" /></label>
+              <label><span class="slider-label"><span>Auto Height / 自动高度</span><span><span id="gridHeightValue" class="slider-value">80</span> beads</span></span><input id="gridHeight" type="range" min="8" max="200" step="1" value="80" disabled /></label>
+              <label><span class="slider-label"><span>Max Beads / 最大颗粒</span><span id="maxBeadsValue" class="slider-value">5000</span></span><input id="maxBeads" type="range" min="1000" max="20000" step="500" value="5000" /></label>
+              <label><span class="slider-label"><span>Color Count / 颜色数量</span><span id="maxColorsValue" class="slider-value">32</span></span><input id="maxColors" type="range" min="8" max="80" step="1" value="32" /></label>
             </div>
             <details id="advancedSettings" class="advanced-settings" open>
               <summary>More settings / 更多设置</summary>
               <div class="control-grid">
-                <label>Cartoon Strength / 卡通强度 <input id="cartoonStrength" type="range" min="1" max="10" value="6" /></label>
-                <label>Saturation / 饱和度 <input id="saturation" type="range" min="70" max="150" value="112" /></label>
-                <label>Contrast / 对比度 <input id="contrast" type="range" min="80" max="135" value="106" /></label>
-                <label>Soft Edge / 柔边 <input id="softEdge" type="range" min="0" max="100" value="28" /></label>
+                <label><span class="slider-label"><span>Cartoon Strength / 卡通强度</span><span id="cartoonStrengthValue" class="slider-value">40</span></span><input id="cartoonStrength" type="range" min="0" max="100" step="5" value="40" /></label>
+                <label><span class="slider-label"><span>Saturation / 饱和度</span><span id="saturationValue" class="slider-value">115</span></span><input id="saturation" type="range" min="80" max="160" step="5" value="115" /></label>
+                <label><span class="slider-label"><span>Contrast / 对比度</span><span id="contrastValue" class="slider-value">110</span></span><input id="contrast" type="range" min="80" max="160" step="5" value="110" /></label>
+                <label><span class="slider-label"><span>Soft Edge / 柔边</span><span id="softEdgeValue" class="slider-value">30</span></span><input id="softEdge" type="range" min="0" max="100" step="5" value="30" /></label>
                 <label class="row wide"><input id="showGrid" type="checkbox" checked /> Show grid in bead export / 拼豆图显示网格</label>
               </div>
             </details>
@@ -188,6 +190,7 @@
             </div>
             <button id="closeSaveModal" class="secondary" type="button">Close / 关闭</button>
           </div>
+          <button id="openFullImage" class="secondary" type="button">打开完整图片</button>
           <img id="savePreviewImage" alt="Generated bead pattern preview" />
         </div>
       </div>

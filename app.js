@@ -236,39 +236,43 @@
 
   function autoGridSize() {
     const mobile = isMobileOrWeChat();
-    const maxGrid = mobile ? 80 : 240;
-    let requestedW = clamp(Number(controls.gridWidth.value) || (mobile ? 40 : 96), 8, maxGrid);
-    let requestedH = clamp(Number(controls.gridHeight.value) || (mobile ? 40 : 96), 8, maxGrid);
-    const maxBeads = clamp(Number(controls.maxBeads.value) || (mobile ? 1600 : 6000), 100, mobile ? 6400 : 30000);
+    const maxGrid = mobile ? 120 : 200;
+    let requestedW = clamp(Number(controls.gridWidth.value) || (mobile ? 80 : 120), 8, maxGrid);
+    const maxBeads = clamp(Number(controls.maxBeads.value) || (mobile ? 5000 : 12000), 100, mobile ? 14400 : 40000);
     let reduced = false;
 
-    if (mobile && (Number(controls.gridWidth.value) > 80 || Number(controls.gridHeight.value) > 80)) {
+    if (mobile && Number(controls.gridWidth.value) > maxGrid) {
       controls.gridWidth.value = requestedW;
-      controls.gridHeight.value = requestedH;
-      setStatus('手机端建议使用较小图片和较低网格尺寸，避免浏览器自动刷新。已限制网格不超过 80 x 80。', 'muted');
+      setStatus('手机端建议使用较小图片和较低网格尺寸，避免浏览器自动刷新。已限制网格宽度不超过 120。', 'muted');
       reduced = true;
     }
 
-    const ratio = state.sourceWidth && state.sourceHeight ? state.sourceWidth / state.sourceHeight : requestedW / requestedH;
+    const ratio = state.sourceWidth && state.sourceHeight ? state.sourceWidth / state.sourceHeight : 1;
     let width = requestedW;
     let height = Math.max(1, Math.round(width / ratio));
-    if (height > requestedH) {
-      height = requestedH;
+    if (height > maxGrid) {
+      height = maxGrid;
       width = Math.max(1, Math.round(height * ratio));
     }
     width = clamp(width, 8, maxGrid);
     height = clamp(height, 8, maxGrid);
-    if (width !== requestedW || height !== requestedH) reduced = true;
+    if (width !== requestedW) reduced = true;
 
     const total = width * height;
-    if (total <= maxBeads) return { width, height, reduced };
+    if (total <= maxBeads) {
+      controls.gridWidth.value = width;
+      controls.gridHeight.value = height;
+      return { width, height, reduced };
+    }
 
     const scale = Math.sqrt(maxBeads / total);
-    return {
+    const adjusted = {
       width: Math.max(8, Math.floor(width * scale)),
       height: Math.max(8, Math.floor(height * scale)),
       reduced: true,
     };
+    controls.gridHeight.value = adjusted.height;
+    return adjusted;
   }
 
   async function cartoonize(token) {
@@ -349,7 +353,7 @@
   async function generatePattern(token) {
     if (!state.cartoonCanvas.width || !state.palette.length) return;
     const grid = autoGridSize();
-    const maxColors = clamp(Number(controls.maxColors.value) || 48, 2, 221);
+    const maxColors = clamp(Number(controls.maxColors.value) || 80, 2, 221);
     const ctx = state.cartoonCanvas.getContext('2d', { willReadFrequently: true });
     const source = ctx.getImageData(0, 0, state.cartoonCanvas.width, state.cartoonCanvas.height);
     const cellW = state.cartoonCanvas.width / grid.width;
@@ -361,8 +365,7 @@
       const row = [];
       for (let x = 0; x < grid.width; x += 1) {
         const rgb = averageCell(source.data, source.width, source.height, x * cellW, y * cellH, (x + 1) * cellW, (y + 1) * cellH);
-        const preReducedRgb = rgb.map((v) => quantizeChannel(v, Math.max(4, Math.round(Math.sqrt(maxColors)))));
-        const color = findClosestMardColor(preReducedRgb);
+        const color = findClosestMardColor(rgb);
         row.push({ code: color.code, hex: color.hex, rgb: color.rgb, group: color.group });
         counts.set(color.code, (counts.get(color.code) || 0) + 1);
       }
@@ -371,16 +374,20 @@
       if (token !== state.processToken) return;
     }
 
-    const limitedPalette = [...counts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, maxColors)
-      .map(([code]) => state.palette.find((color) => color.code === code))
-      .filter(Boolean);
+    const limitedPalette = counts.size > maxColors
+      ? [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, maxColors)
+        .map(([code]) => state.palette.find((color) => color.code === code))
+        .filter(Boolean)
+      : [];
 
-    state.pattern = firstPass.map((row) => row.map((bead) => {
-      const color = findClosestMardColor(bead.rgb, limitedPalette.length ? limitedPalette : state.palette);
-      return { code: color.code, hex: color.hex, rgb: color.rgb, group: color.group };
-    }));
+    state.pattern = limitedPalette.length
+      ? firstPass.map((row) => row.map((bead) => {
+        const color = findClosestMardColor(bead.rgb, limitedPalette);
+        return { code: color.code, hex: color.hex, rgb: color.rgb, group: color.group };
+      }))
+      : firstPass;
     await yieldToBrowser();
 
     recomputeStats();
@@ -576,8 +583,7 @@
         <span class="mini-dot" style="background:${row.hex}"></span>
         <strong>${row.code}</strong>
         <span>${row.hex}</span>
-        <span class="hint">${row.percent.toFixed(1)}%</span>
-        <span>${row.count}</span>
+        <span>${row.count} beads</span>
       </div>
     `).join('');
   }
@@ -639,9 +645,8 @@
       resetZoom('bead');
       renderOriginalPreview();
       if (isMobileOrWeChat()) {
-        controls.gridWidth.value = Math.min(Number(controls.gridWidth.value) || 40, 80);
-        controls.gridHeight.value = Math.min(Number(controls.gridHeight.value) || 40, 80);
-        controls.maxBeads.value = Math.min(Number(controls.maxBeads.value) || 1600, 6400);
+      controls.gridWidth.value = Math.min(Number(controls.gridWidth.value) || 80, 120);
+      controls.maxBeads.value = Math.min(Number(controls.maxBeads.value) || 5000, 14400);
         setStatus('手机端建议使用较小图片和较低网格尺寸，避免浏览器自动刷新。正在生成，请稍候…', 'muted');
       }
       await processAll();
@@ -775,7 +780,7 @@
       if (!previewWindow) {
         setStatus('PNG is ready. If download did not start, allow pop-ups or use CSV. / PNG 已生成。如果没有下载，请允许弹窗或使用 CSV。', 'muted');
       } else {
-        setStatus('PNG opened. On mobile, long-press the image to save if download does not start. / PNG 已打开。手机端如未下载，请长按图片保存。', 'success');
+        setStatus('PNG opened. On mobile or WeChat, long-press the full image to save. / PNG 已打开。手机或微信中，请长按下方完整图片保存到相册。', 'success');
       }
       window.setTimeout(() => URL.revokeObjectURL(url), 60000);
       return;
@@ -856,14 +861,20 @@
 
   document.addEventListener('DOMContentLoaded', async () => {
     bindEvents();
-    if (isMobileViewport()) {
+    if (isMobileOrWeChat()) {
       $('advancedSettings')?.removeAttribute('open');
-      controls.gridWidth.value = 40;
-      controls.gridHeight.value = 40;
-      controls.maxBeads.value = 1600;
-      controls.gridWidth.max = 80;
-      controls.gridHeight.max = 80;
-      controls.maxBeads.max = 6400;
+      controls.gridWidth.value = 80;
+      controls.gridHeight.value = 80;
+      controls.maxBeads.value = 5000;
+      controls.gridWidth.max = 120;
+      controls.gridHeight.max = 120;
+      controls.maxBeads.max = 14400;
+    } else {
+      controls.gridWidth.value = 120;
+      controls.gridHeight.value = 80;
+      controls.maxBeads.value = 12000;
+      controls.gridWidth.max = 200;
+      controls.gridHeight.max = 200;
     }
     await loadPalette();
     setStatus('Upload an image to begin. / 上传图片开始。');
